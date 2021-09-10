@@ -1,0 +1,72 @@
+version: "3.8"
+services:
+
+  discovery:
+    image: advic/discovery-service:latest
+    hostname: discovery-service
+    networks:
+      - microservices_mesh
+    ports:
+      - "8761:8761"
+    environment:
+      eureka.client.serviceUrl.defaultZone: http://discovery-service:8761/eureka/
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+  config:
+    image: advic/config-service:latest
+    hostname: config-service
+    depends_on:
+      - discovery
+      - vault
+    networks:
+      - microservices_mesh
+    ports:
+      - "8700:8700"
+    environment:
+      eureka.client.serviceUrl.defaultZone: http://discovery-service:8761/eureka/
+    deploy:
+      restart_policy:
+        condition: on-failure
+    healthcheck:
+      test: curl --fail http://config-service:8700/config-service/default || exit 1
+      interval: 60s
+      timeout: 10s
+      start_period: 5s
+      retries: 3
+
+  oauth2:
+    image: advic/oauth2-service:latest
+    hostname: oauth2-service
+    depends_on:
+      - config
+      - vault
+    networks:
+      - microservices_mesh
+      - vault_net
+    ports:
+      - "8710:8710"
+    environment:
+      eureka.client.serviceUrl.defaultZone: http://discovery-service:8761/eureka/
+      spring.config.import: "optional:configserver:http://config-service:8700"
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+  vault:
+    image: hashicorp/vault:1.8.2
+    hostname: vault
+    networks:
+      - vault_net
+    ports:
+      - "8200:8200"
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+networks:
+  microservices_mesh:
+    driver: overlay
+  vault_net:
+    driver: overlay
